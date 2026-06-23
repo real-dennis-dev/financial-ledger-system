@@ -3,6 +3,78 @@ const { v4: uuidv4 } = require("uuid");
 const logger = require("../../config/logger");
 
 class TransactionUtil {
+  // Additional utilities for transaction module
+
+  generateTransactionId(prefix = "TXN") {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `${prefix}-${timestamp}-${random}`;
+  }
+
+  calculateFees(amount, type) {
+    const feeConfigs = {
+      TRANSFER: { percentage: 0.001, fixed: 0.5 },
+      PAYMENT: { percentage: 0.02, fixed: 0.3 },
+      WITHDRAWAL: { percentage: 0.005, fixed: 1.0 },
+      DEPOSIT: { percentage: 0, fixed: 0 },
+      REFUND: { percentage: 0, fixed: 0 },
+    };
+
+    const config = feeConfigs[type] || feeConfigs.TRANSFER;
+    const fee = amount * config.percentage + config.fixed;
+
+    return Math.round(Math.min(fee, 100) * 100) / 100; // Cap at $100
+  }
+
+  validateReferences(entries) {
+    const references = entries.map((e) => e.reference).filter(Boolean);
+    const duplicates = references.filter(
+      (ref, index) => references.indexOf(ref) !== index
+    );
+
+    return {
+      isValid: duplicates.length === 0,
+      duplicates,
+      message:
+        duplicates.length === 0
+          ? "All references are unique"
+          : `Duplicate references found: ${duplicates.join(", ")}`,
+    };
+  }
+
+  getTransactionStatus(transaction) {
+    const statusMap = {
+      PENDING: {
+        code: 1,
+        label: "Pending",
+        description: "Transaction is pending processing",
+      },
+      PROCESSING: {
+        code: 2,
+        label: "Processing",
+        description: "Transaction is being processed",
+      },
+      COMPLETED: {
+        code: 3,
+        label: "Completed",
+        description: "Transaction completed successfully",
+      },
+      FAILED: { code: 4, label: "Failed", description: "Transaction failed" },
+      CANCELLED: {
+        code: 5,
+        label: "Cancelled",
+        description: "Transaction was cancelled",
+      },
+    };
+
+    return (
+      statusMap[transaction.status] || {
+        code: 0,
+        label: "Unknown",
+        description: "Unknown status",
+      }
+    );
+  }
   generateTransactionRef(prefix = "TXN") {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.floor(Math.random() * 1000000)
