@@ -1,10 +1,24 @@
-const bull = require("../../config/bull");
+const bull = require("../../config/bull"); // adjust path as needed
 const logger = require("../../config/logger");
 
 class QueueService {
   async addToQueue(queueName, jobData, options = {}) {
     try {
       const job = await bull.addJob(queueName, jobData, options);
+
+      if (!job) {
+        // Redis was down or queue unavailable – do not crash
+        logger.warn("Job could not be added – Redis/queue unavailable", {
+          queueName,
+          data: jobData,
+        });
+        return {
+          jobId: null,
+          queueName,
+          status: "unavailable",
+          message: "Queue service is currently unavailable (Redis down)",
+        };
+      }
 
       logger.info("Job added to queue", {
         queueName,
@@ -18,30 +32,52 @@ class QueueService {
         status: "queued",
       };
     } catch (error) {
-      logger.error("Failed to add job to queue:", error);
-      throw error;
+      // Extra safety net – should rarely reach here now
+      logger.error("Unexpected error adding job to queue:", {
+        message: error.message,
+        queueName,
+      });
+      return {
+        jobId: null,
+        queueName,
+        status: "error",
+        message: error.message,
+      };
     }
   }
 
   async processQueue(queueName, handler) {
     const queue = bull.getQueue(queueName);
+
     if (!queue) {
-      throw new Error(`Queue ${queueName} not found`);
+      logger.warn(
+        `Cannot start processor for "${queueName}" – queue unavailable (Redis down)`
+      );
+      return;
     }
 
-    queue.process(async (job) => {
-      logger.info(`Processing job ${job.id} from ${queueName}`);
+    try {
+      queue.process(async (job) => {
+        logger.info(`Processing job ${job.id} from ${queueName}`);
 
-      try {
-        const result = await handler(job.data);
-        return result;
-      } catch (error) {
-        logger.error(`Job ${job.id} failed:`, error);
-        throw error;
-      }
-    });
+        try {
+          const result = await handler(job.data);
+          return result;
+        } catch (error) {
+          logger.error(`Job ${job.id} failed:`, {
+            message: error.message,
+            queueName,
+          });
+          throw error; // let Bull handle retries
+        }
+      });
 
-    logger.info(`Queue processor started for ${queueName}`);
+      logger.info(`Queue processor started for ${queueName}`);
+    } catch (error) {
+      logger.error(`Failed to attach processor for ${queueName}:`, {
+        message: error.message,
+      });
+    }
   }
 
   async getJobStatus(queueName, jobId) {
@@ -68,7 +104,7 @@ class QueueService {
     return bull.cleanOldJobs(queueName, age, limit);
   }
 
-  // Convenience methods for specific queues
+  // Convenience methods
   async scheduleTransaction(transactionData) {
     return this.addToQueue("transactions", transactionData, {
       priority: 1,
@@ -102,6 +138,11 @@ class QueueService {
       priority: 5,
       attempts: 3,
     });
+  }
+
+  // Helper so callers can check availability
+  isAvailable() {
+    return bull.isAvailable();
   }
 }
 
