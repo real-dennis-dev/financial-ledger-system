@@ -2,13 +2,13 @@
   "name": "financial-ledger-system",
   "version": "1.0.0",
   "description": "Banking and fintech ledger system with PostgreSQL",
-  "main": "src/app.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "test": "jest",
-    "migrate": "node src/migrations/run.js",
-    "seed": "node src/seeders/run.js"
+    "migrate": "node migrations/run.js",
+    "seed": "node seeders/run.js"
   },
   "dependencies": {
     "express": "^4.18.2",
